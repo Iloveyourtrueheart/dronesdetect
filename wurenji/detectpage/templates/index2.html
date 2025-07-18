@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>YOLOv8 实时目标检测</title>
+    <style>
+        body { font-family: Arial; margin: 20px; }
+        #videoContainer { margin-top: 20px; }
+        #streamUrl { width: 400px; padding: 8px; }
+        button { padding: 8px 16px; background: #4CAF50; color: white; border: none; cursor: pointer; }
+        button:disabled { background: #cccccc; }
+    </style>
+</head>
+<body>
+    <h1>YOLOv8 实时目标检测</h1>
+    <div>
+        <input type="text" id="streamUrl" placeholder="输入视频流地址 (HTTP/RTMP)" value="http://example.com/stream.m3u8">
+        <button id="startBtn">开始检测</button>
+        <button id="stopBtn" disabled>停止检测</button>
+    </div>
+    <div id="videoContainer">
+        <img id="videoFeed" src="" style="max-width: 800px;">
+    </div>
+
+    <script>
+        const startBtn = document.getElementById('startBtn');
+        const stopBtn = document.getElementById('stopBtn');
+        const streamUrl = document.getElementById('streamUrl');
+        const videoFeed = document.getElementById('videoFeed');
+        let intervalId = null;
+
+        startBtn.addEventListener('click', async () => {
+            const url = streamUrl.value.trim();
+            if (!url) return alert('请输入视频流地址！');
+
+            startBtn.disabled = true;
+            stopBtn.disabled = false;
+
+            // 发送请求到后端
+            const response = await fetch('/start', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: `stream_url=${encodeURIComponent(url)}`
+            });
+            const result = await response.json();
+            if (result.status !== 'success') {
+                alert(result.message || '启动失败！');
+                return;
+            }
+
+            // 开始显示视频流
+            videoFeed.src = '/video_feed';
+        });
+
+        stopBtn.addEventListener('click', async () => {
+            await fetch('/stop');
+            startBtn.disabled = false;
+            stopBtn.disabled = true;
+            videoFeed.src = '';
+        });
+    </script>
+</body>
+</html>

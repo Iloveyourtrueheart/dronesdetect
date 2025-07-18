@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>YOLOv8 多用户实时检测</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        
+        body {
+            font-family: 'Segoe UI', Arial, sans-serif;
+            background: url('/static/background.jpg') no-repeat center center fixed;
+            background-size: cover;
+            color: #ffffff;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            width: 100%;
+            max-width: 1200px;
+            background-color: rgba(45, 45, 45, 0.9);
+            border-radius: 10px;
+            padding: 20px;
+            box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
+        }
+        
+        h1 { color: #4CAF50; text-align: center; margin-bottom: 20px; }
+        
+        .user-stats {
+            background-color: rgba(0, 0, 0, 0.5);
+            padding: 10px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+        
+        .video-container {
+            position: relative;
+            width: 100%;
+            height: 0;
+            padding-bottom: 56.25%;
+            background-color: #000;
+            border-radius: 8px;
+            overflow: hidden;
+            margin-bottom: 20px;
+            border: 3px solid #4CAF50;
+        }
+        
+        #video-feed {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+        }
+        
+        .control-panel {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 15px;
+            justify-content: center;
+            margin-bottom: 20px;
+        }
+        
+        #stream-url {
+            flex-grow: 1;
+            min-width: 300px;
+            padding: 12px 15px;
+            border: 2px solid #4CAF50;
+            border-radius: 5px;
+            background-color: #333;
+            color: #fff;
+            font-size: 16px;
+        }
+        
+        .btn {
+            padding: 12px 25px;
+            border: none;
+            border-radius: 5px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        
+        .btn-primary { background-color: #4CAF50; color: white; }
+        .btn-primary:hover { background-color: #45a049; transform: translateY(-2px); }
+        .btn-stop { background-color: #f44336; color: white; }
+        .btn-stop:hover { background-color: #d32f2f; }
+        .btn:disabled { background-color: #777; cursor: not-allowed; }
+        
+        .status-indicator {
+            text-align: center;
+            padding: 10px;
+            border-radius: 5px;
+            background-color: rgba(51, 51, 51, 0.7);
+            margin-bottom: 15px;
+        }
+        
+        .stats-panel {
+            background-color: rgba(0, 0, 0, 0.5);
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 15px;
+        }
+        
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 10px;
+            margin-top: 10px;
+        }
+        
+        #loading-spinner {
+            display: none;
+            text-align: center;
+            padding: 20px;
+        }
+        
+        .spinner {
+            border: 4px solid rgba(0, 0, 0, 0.1);
+            border-radius: 50%;
+            border-top: 4px solid #4CAF50;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 10px;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        @media (max-width: 768px) {
+            .container { padding: 15px; }
+            .control-panel { flex-direction: column; }
+            #stream-url, .btn { width: 100%; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>YOLOv8 多用户实时检测</h1>
+        
+        <div class="user-stats">
+            在线用户: <span id="current-users">0</span>/<span id="max-users">3</span>
+        </div>
+        
+        <div class="video-container">
+            <img id="video-feed" alt="实时检测画面">
+        </div>
+        
+        <div class="control-panel">
+            <input type="text" id="stream-url" 
+                   placeholder="输入RTSP/RTMP视频流地址" 
+                   value="rtsp://example.com/stream">
+            
+            <button id="start-btn" class="btn btn-primary">开始检测</button>
+            <button id="stop-btn" class="btn btn-stop" disabled>停止检测</button>
+            <button id="capture-btn" class="btn" disabled>截图保存</button>
+        </div>
+        
+        <div class="status-indicator">
+            <p id="status-text">状态: 准备就绪</p>
+        </div>
+        
+        <div class="stats-panel">
+            <h3>检测统计</h3>
+            <div class="stats-grid">
+                <div>连接状态: <span id="connection-status">未连接</span></div>
+                <div>最后活跃: <span id="last-active">-</span></div>
+                <div>重连次数: <span id="reconnect-count">0</span></div>
+            </div>
+        </div>
+        
+        <div id="loading-spinner">
+            <div class="spinner"></div>
+            <p>正在加载模型...</p>
+        </div>
+    </div>
+
+    <script>
+        // DOM元素
+        const startBtn = document.getElementById('start-btn');
+        const stopBtn = document.getElementById('stop-btn');
+        const captureBtn = document.getElementById('capture-btn');
+        const streamUrlInput = document.getElementById('stream-url');
+        const videoFeed = document.getElementById('video-feed');
+        const statusText = document.getElementById('status-text');
+        const currentUsersSpan = document.getElementById('current-users');
+        const maxUsersSpan = document.getElementById('max-users');
+        const connectionStatus = document.getElementById('connection-status');
+        const lastActiveSpan = document.getElementById('last-active');
+        const reconnectSpan = document.getElementById('reconnect-count');
+        const loadingSpinner = document.getElementById('loading-spinner');
+        
+        // 状态变量
+        let sessionId = null;
+        let userCountInterval;
+        let heartbeatInterval;
+        let reconnectCount = 0;
+        let lastHeartbeat = null;
+        
+        // 从本地存储加载上次的流地址
+        if (localStorage.getItem('lastStreamUrl')) {
+            streamUrlInput.value = localStorage.getItem('lastStreamUrl');
+        }
+        
+        // 更新状态显示
+        function updateStatus(message, isError = false) {
+            statusText.textContent = `状态: ${message}`;
+            statusText.style.color = isError ? '#ff4444' : '#4CAF50';
+        }
+        
+        // 更新用户计数
+        function updateUserCount() {
+            fetch('/user_count')
+                .then(res => res.json())
+                .then(data => {
+                    currentUsersSpan.textContent = data.current_users;
+                    maxUsersSpan.textContent = data.max_users;
+                });
+        }
+        
+        // 开始心跳检测
+        function startHeartbeat() {
+            lastHeartbeat = new Date();
+            updateLastActive();
+            
+            heartbeatInterval = setInterval(() => {
+                fetch('/heartbeat')
+                    .then(res => res.json())
+                    .then(data => {
+                        if (data.status === "alive") {
+                            lastHeartbeat = new Date();
+                            updateLastActive();
+                        } else {
+                            handleDisconnection();
+                        }
+                    })
+                    .catch(() => handleDisconnection());
+            }, 3000);
+        }
+        
+        // 更新最后活跃时间
+        function updateLastActive() {
+            if (lastHeartbeat) {
+                const diff = Math.floor((new Date() - lastHeartbeat) / 1000);
+                lastActiveSpan.textContent = `${diff}秒前`;
+            }
+        }
+        
+        // 处理断开连接
+        function handleDisconnection() {
+            connectionStatus.textContent = "已断开";
+            connectionStatus.style.color = "#f44336";
+            reconnect();
+        }
+        
+        // 自动重连
+        function reconnect() {
+            if (reconnectCount >= 3) {
+                updateStatus("自动重连失败，请手动重试", true);
+                return;
+            }
+            
+            reconnectCount++;
+            reconnectSpan.textContent = reconnectCount;
+            updateStatus(`连接中断，尝试重连 (${reconnectCount}/3)...`, true);
+            
+            setTimeout(() => {
+                if (videoFeed.src) {
+                    videoFeed.src = videoFeed.src.split('?')[0] + '?t=' + Date.now();
+                }
+            }, 2000);
+        }
+        
+        // 开始检测
+        startBtn.addEventListener('click', async () => {
+            const streamUrl = streamUrlInput.value.trim();
+            if (!streamUrl) {
+                updateStatus('请输入视频流地址!', true);
+                return;
+            }
+            
+            // 保存到本地存储
+            localStorage.setItem('lastStreamUrl', streamUrl);
+            
+            try {
+                updateStatus('正在连接视频流...');
+                startBtn.disabled = true;
+                loadingSpinner.style.display = 'block';
+                
+                const response = await fetch('/start', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    body: `stream_url=${encodeURIComponent(streamUrl)}`
+                });
+                
+                const data = await response.json();
+                
+                if (data.status === "success") {
+                    sessionId = data.session_id;
+                    videoFeed.src = `/video_feed?session_id=${sessionId}`;
+                    stopBtn.disabled = false;
+                    captureBtn.disabled = false;
+                    updateStatus('检测运行中');
+                    updateUserCount();
+                    connectionStatus.textContent = "已连接";
+                    connectionStatus.style.color = "#4CAF50";
+                    reconnectCount = 0;
+                    reconnectSpan.textContent = "0";
+                    
+                    // 启动定时器
+                    userCountInterval = setInterval(updateUserCount, 5000);
+                    startHeartbeat();
+                } else {
+                    updateStatus(data.message || '启动失败', true);
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                updateStatus('连接后端失败', true);
+            } finally {
+                startBtn.disabled = false;
+                loadingSpinner.style.display = 'none';
+            }
+        });
+        
+        // 停止检测
+        stopBtn.addEventListener('click', async () => {
+            try {
+                updateStatus('正在停止...');
+                await fetch('/stop');
+                videoFeed.src = '';
+                startBtn.disabled = false;
+                stopBtn.disabled = true;
+                captureBtn.disabled = true;
+                updateStatus('已停止');
+                updateUserCount();
+                connectionStatus.textContent = "未连接";
+                
+                // 清除定时器
+                clearInterval(userCountInterval);
+                clearInterval(heartbeatInterval);
+            } catch (error) {
+                console.error('停止失败:', error);
+                updateStatus('停止失败', true);
+            }
+        });
+        
+        // 截图功能
+        captureBtn.addEventListener('click', () => {
+            const canvas = document.createElement('canvas');
+            canvas.width = videoFeed.videoWidth || 640;
+            canvas.height = videoFeed.videoHeight || 360;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(videoFeed, 0, 0, canvas.width, canvas.height);
+            
+            const link = document.createElement('a');
+            link.download = `detection-${new Date().toISOString().slice(0, 19)}.png`;
+            link.href = canvas.toDataURL('image/png');
+            link.click();
+            
+            updateStatus('截图已保存');
+        });
+        
+        // 视频流错误处理
+        videoFeed.addEventListener('error', () => {
+            if (videoFeed.src) {
+                handleDisconnection();
+            }
+        });
+        
+        // 键盘快捷键
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && !startBtn.disabled) {
+                startBtn.click();
+            }
+            if (e.key === 'Escape' && !stopBtn.disabled) {
+                stopBtn.click();
+            }
+            if (e.key === 's' && !captureBtn.disabled) {
+                captureBtn.click();
+            }
+        });
+        
+        // 定期检查连接状态
+        setInterval(() => {
+            if (videoFeed.src && videoFeed.readyState === HTMLMediaElement.HAVE_NOTHING) {
+                connectionStatus.textContent = "缓冲中...";
+                connectionStatus.style.color = "#ff9800";
+            }
+        }, 1000);
+        
+        // 页面加载时初始化
+        updateStatus('准备就绪');
+        updateUserCount();
+    </script>
+</body>
+</html>

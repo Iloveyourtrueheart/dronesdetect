@@ -1,0 +1,109 @@
+/* 全局样式 */
+body {
+    margin: 0;
+    padding: 0;
+    background: url('/static/background.jpg') no-repeat center center fixed;
+    background-size: cover;
+    font-family: 'Arial', sans-serif;
+    height: 100vh;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    overflow: hidden;
+}
+
+/* 视频容器 */
+#videoContainer {
+    background: rgba(0, 0, 0, 0.7); /* 半透明黑色背景 */
+    padding: 25px;
+    border-radius: 15px;
+    text-align: center;
+    box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
+    max-width: 90%;
+}
+
+/* 视频画面样式 */
+#videoFeed {
+    max-width: 800px;
+    max-height: 600px;
+    border: 3px solid #4CAF50;
+    border-radius: 8px;
+    box-shadow: 0 0 15px rgba(76, 175, 80, 0.6);
+    display: block;
+    margin: 0 auto;
+}
+
+/* 标题样式 */
+h1 {
+    color: #4CAF50;
+    text-shadow: 1px 1px 3px rgba(0, 0, 0, 0.5);
+    margin-bottom: 20px;
+}
+
+/* 控制区样式 */
+.controls {
+    margin-top: 20px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+/* 输入框样式 */
+#streamUrl {
+    padding: 10px 15px;
+    width: 400px;
+    border: 2px solid #4CAF50;
+    border-radius: 5px;
+    background: rgba(255, 255, 255, 0.9);
+    font-size: 16px;
+}
+
+/* 按钮基础样式 */
+button {
+    padding: 10px 20px;
+    background: #4CAF50;
+    color: white;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 16px;
+    transition: all 0.3s;
+}
+
+/* 按钮悬停效果 */
+button:hover {
+    background: #45a049;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+}
+
+/* 禁用按钮样式 */
+button:disabled {
+    background: #cccccc;
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
+}
+
+/* 移动端适配 */
+@media (max-width: 768px) {
+    #videoContainer {
+        padding: 15px;
+        width: 95%;
+    }
+    
+    #streamUrl {
+        width: 100%;
+    }
+    
+    .controls {
+        flex-direction: column;
+    }
+    
+    button {
+        width: 100%;
+        margin: 5px 0;
+    }
+}
